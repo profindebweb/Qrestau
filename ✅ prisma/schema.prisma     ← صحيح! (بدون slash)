@@ -1,0 +1,149 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  NEW
+  PREPARING
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+enum CommissionStatus {
+  PENDING
+  PAID
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+}
+
+model Restaurant {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  name           String
+  email          String    @unique
+  password       String
+  phone          String    @unique
+  whatsapp       String?   // رقم الواتساب للتنبيهات
+  language       String    @default("ar") // لغة الواجهة المفضلة
+  isActive       Boolean   @default(true)
+  balanceDue     Float     @default(0)
+  commissionPaid Float     @default(0)
+  lastPaymentAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tables      Table[]
+  menuItems   MenuItem[]
+  orders      Order[]
+  commissions Commission[]
+  invoices    Invoice[]
+
+  @@index([isActive, balanceDue])
+  @@index([phone])
+  @@map("restaurants")
+}
+
+model Table {
+  id           String @id @default(auto()) @map("_id") @db.ObjectId
+  number       Int
+  qrCodeUrl    String
+  restaurantId String @db.ObjectId
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  orders Order[]
+
+  @@unique([restaurantId, number])
+  @@index([restaurantId])
+  @@map("tables")
+}
+
+model MenuItem {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  nameFr       String?  // الاسم بالفرنسية
+  nameEn       String?  // الاسم بالإنجليزية
+  nameEs       String?  // الاسم بالإسبانية
+  price        Float
+  category     String
+  image        String?
+  isAvailable  Boolean  @default(true)
+  restaurantId String   @db.ObjectId
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, isAvailable])
+  @@map("menuItems")
+}
+
+model Order {
+  id           String      @id @default(auto()) @map("_id") @db.ObjectId
+  tableId      String      @db.ObjectId
+  table        Table       @relation(fields: [tableId], references: [id])
+  restaurantId String      @db.ObjectId
+  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id])
+  items        OrderItem[]
+  totalAmount  Float
+  status       OrderStatus @default(NEW)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  commission Commission?
+
+  @@index([restaurantId, status, createdAt])
+  @@index([tableId, createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id         String @id @default(auto()) @map("_id") @db.ObjectId
+  quantity   Int
+  price      Float
+  menuItemId String @db.ObjectId
+  orderId    String @db.ObjectId
+  order      Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("orderItems")
+}
+
+model Commission {
+  id           String          @id @default(auto()) @map("_id") @db.ObjectId
+  amount       Float           @default(1.0)
+  orderId      String          @unique @db.ObjectId
+  order        Order           @relation(fields: [orderId], references: [id])
+  restaurantId String          @db.ObjectId
+  restaurant   Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  status       CommissionStatus @default(PENDING)
+  paidAt       DateTime?
+  createdAt    DateTime        @default(now())
+
+  @@index([restaurantId, status])
+  @@map("commissions")
+}
+
+model Invoice {
+  id           String        @id @default(auto()) @map("_id") @db.ObjectId
+  restaurantId String        @db.ObjectId
+  restaurant   Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  month        Int
+  year         Int
+  totalOrders  Int
+  totalAmount  Float
+  commission   Float
+  status       InvoiceStatus @default(DRAFT)
+  createdAt    DateTime      @default(now())
+  sentAt       DateTime?
+  paidAt       DateTime?
+
+  @@unique([restaurantId, month, year])
+  @@index([restaurantId, status])
+  @@map("invoices")
+}
